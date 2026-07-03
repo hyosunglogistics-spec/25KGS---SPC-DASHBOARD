@@ -221,9 +221,9 @@
     <!-- ── LEGEND ──────────────────────────────────────────────── -->
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm
                 p-3 flex flex-wrap gap-x-5 gap-y-2 justify-center items-center text-xs font-semibold">
-        <span class="flex items-center gap-1.5"><span class="w-5 border-t-2 border-red-700"></span> USL 25.2 / LSL 24.9</span>
+        <span class="flex items-center gap-1.5"><span class="w-5 border-t-2 border-red-700"></span> USL 25.35 / LSL 24.9</span>
         <span class="flex items-center gap-1.5">
-            <span class="w-5 inline-block" style="border-top:2px dashed #f97316"></span> UCL 25.1 / LCL 24.95
+            <span class="w-5 inline-block" style="border-top:2px dashed #f97316"></span> UCL 25.25 / LCL 24.95
         </span>
         <span class="flex items-center gap-1.5"><span class="w-5 border-t-2 border-green-700"></span> CL 25.0</span>
         <span class="w-px h-4 bg-slate-300 mx-1"></span>
@@ -329,7 +329,7 @@ const REFRESH_SECONDS = 60;
 /* ╔══════════════════════════════════════════════════════════════╗
    ║  SPC LIMITS                                                  ║
    ╚══════════════════════════════════════════════════════════════╝ */
-const SPC = { USL: 25.20, UCL: 25.10, CL: 25.00, LCL: 24.95, LSL: 24.90 };
+const SPC = { USL: 25.35, UCL: 25.25, CL: 25.00, LCL: 24.95, LSL: 24.90 };
 
 /** Production lines displayed */
 const LINES = ['Line 1','Line 2','Line 3','Line 4','Line 5','Line 6','Line 7','Line 8'];
@@ -762,7 +762,7 @@ function renderAllCharts() {
                     maintainAspectRatio : false,
                     scales: {
                         y: {
-                            min  : 24.80, max: 25.30,
+                            min  : 24.80, max: 25.45,
                             ticks: { callback: v => v.toFixed(2), font: { size: 10 } },
                             grid : { color: '#e2e8f0' }
                         },
