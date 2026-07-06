@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPC Dashboard — 25 kg Packaging · 8 Lines · Live</title>
+
+    <!-- ═══ DEPENDENCIES ═══════════════════════════════════════════ -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        /* ── Design foundation ─────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #d9dde3;
+            color: #1e293b;
+        }
+
+        /* ── Spinner ─────────────────────────────────────────── */
+        @keyframes _spin  { to { transform: rotate(360deg); } }
+        @keyframes _pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+        .spinner {
+            display: inline-block; flex-shrink: 0;
+            width: 20px; height: 20px; border-radius: 50%;
+            border: 2.5px solid #cbd5e1; border-top-color: #6366f1;
+            animation: _spin .65s linear infinite;
+        }
+        .pulse-dot {
+            display: inline-block; flex-shrink: 0;
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #22c55e;
+            animation: _pulse 2s ease-in-out infinite;
+        }
+
+        /* ── Countdown ring ──────────────────────────────────── */
+        .ring-svg { transform: rotate(-90deg); }
+        .ring-track { fill:none; stroke:#e2e8f0; stroke-width:3; }
+        .ring-fill  { fill:none; stroke:#6366f1; stroke-width:3;
+                      stroke-linecap:round;
+                      transition: stroke-dashoffset 0.95s linear,
+                                  stroke 0.3s; }
+
+        /* ── Chart panel ─────────────────────────────────────── */
+        .chart-wrapper { height: 285px; position: relative; }
+
+        /* ── Status badges ───────────────────────────────────── */
+        .badge-normal  { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+        .badge-warning { background:#fef9c3; color:#854d0e; border:1px solid #fde047; }
+        .badge-defect  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+
+        /* ── Stat cards ──────────────────────────────────────── */
+        .stat-card {
+            background: #fff; border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06);
+            padding: 1rem 1.25rem;
+            transition: box-shadow .2s;
+        }
+        .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+
+        /* ── Table row hover ─────────────────────────────────── */
+        tbody tr:hover td { background: #f8fafc; }
+
+        /* ── PDF export ──────────────────────────────────────── */
+        .pdf-exporting .no-export { display: none !important; }
+
+        /* ── Responsive chart grid ───────────────────────────── */
+        @media (min-width: 1280px) { #chartsGrid { grid-template-columns: repeat(2, 1fr); } }
+        @media print {
+            .no-export { display:none!important; }
+            body { background:#fff; }
+            @page { size: A4 landscape; margin: 10mm; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN DASHBOARD WRAPPER  (captured for PDF)
+════════════════════════════════════════════════════════════════ -->
+<div id="dashboardContent" class="max-w-[1640px] mx-auto p-4 md:p-6 space-y-5">
+
+    <!-- ── HEADER ──────────────────────────────────────────────── -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center
+                pb-4 border-b border-slate-200 gap-3">
+        <div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">
+                SPC Dashboard
+                <span class="text-indigo-600">· 25 kg Packaging</span>
+            </h1>
+            <p class="text-slate-500 text-sm mt-1">
+                Quality Management System &middot; Lines 1–8 &middot; Live Google Apps Script Feed
+            </p>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex flex-wrap gap-2 no-export">
+            <button id="btnRefresh" onclick="manualRefresh()"
+                class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700
+                       text-white text-sm font-semibold py-2 px-4 rounded-lg shadow transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round"><path d="M23 4v6h-6"/><path d="M20.49 15A9 9 0 1 1 18 5.05"/></svg>
+                Refresh Now
+            </button>
+            <button id="btnExportPdf" onclick="exportToPDF()"
+                class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700
+                       text-white text-sm font-semibold py-2 px-4 rounded-lg shadow transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Export PDF
+            </button>
+            <button id="btnExportHtml" onclick="exportToHTML()"
+                class="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700
+                       text-white text-sm font-semibold py-2 px-4 rounded-lg shadow transition">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                Export HTML
+            </button>
+        </div>
+    </div>
+
+    <!-- ── LIVE DATA STATUS BAR ────────────────────────────────── -->
+    <div id="statusBar"
+         class="no-export flex items-center gap-3 rounded-xl border px-4 py-3
+                bg-indigo-50 border-indigo-200 transition-all duration-300">
+
+        <!-- Icon slot -->
+        <div id="sbIcon"><span class="spinner"></span></div>
+
+        <!-- Text -->
+        <div class="flex-1 min-w-0">
+            <p id="sbTitle" class="text-sm font-semibold text-indigo-800">
+                Connecting to Google Apps Script…
+            </p>
+            <p id="sbSub" class="text-xs text-indigo-600 truncate mt-0.5"></p>
+        </div>
+
+        <!-- Countdown ring (visible after first success) -->
+        <div id="ringWrap" class="hidden flex-col items-center" style="min-width:44px">
+            <div class="relative w-10 h-10">
+                <svg class="ring-svg w-10 h-10" viewBox="0 0 36 36">
+                    <circle class="ring-track" cx="18" cy="18" r="15.9"/>
+                    <circle class="ring-fill"  cx="18" cy="18" r="15.9"
+                            id="ringPath"
+                            stroke-dasharray="100 100"
+                            stroke-dashoffset="0"/>
+                </svg>
+                <span id="ringLabel"
+                      class="absolute inset-0 flex items-center justify-center
+                             text-[10px] font-bold text-indigo-700"></span>
+            </div>
+            <span class="text-[9px] text-slate-400 mt-0.5">next sync</span>
+        </div>
+
+        <!-- Manual refresh btn (after first load) -->
+        <button onclick="manualRefresh()" id="sbRefreshBtn"
+            class="hidden no-export flex-shrink-0 text-xs bg-white border border-indigo-300
+                   hover:bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg
+                   font-semibold transition">
+            🔄 Sync
+        </button>
+
+        <!-- Retry btn (on error) -->
+        <button onclick="manualRefresh()" id="sbRetryBtn"
+            class="hidden no-export flex-shrink-0 text-xs bg-red-600 hover:bg-red-700
+                   text-white px-3 py-1.5 rounded-lg font-semibold transition">
+            ⟳ Retry
+        </button>
+    </div>
+
+    <!-- ── STAT SUMMARY CARDS ──────────────────────────────────── -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="statCards">
+        <!-- injected by JS -->
+    </div>
+
+    <!-- ── FILTER BAR ──────────────────────────────────────────── -->
+    <div class="no-export bg-white rounded-xl border border-slate-200
+                shadow-sm p-4 flex flex-wrap items-end gap-4">
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">Start Time</label>
+            <input type="datetime-local" id="startDate"
+                   class="border border-slate-300 rounded-lg px-3 py-2 text-sm
+                          focus:ring-2 focus:ring-indigo-400 outline-none">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">End Time</label>
+            <input type="datetime-local" id="endDate"
+                   class="border border-slate-300 rounded-lg px-3 py-2 text-sm
+                          focus:ring-2 focus:ring-indigo-400 outline-none">
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button onclick="applyFilters()"
+                class="bg-slate-800 hover:bg-slate-900 text-white text-sm
+                       font-semibold py-2 px-4 rounded-lg transition">
+                Apply Filter
+            </button>
+            <button onclick="quickFilter('today')"
+                class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm
+                       py-2 px-3 rounded-lg transition">Today</button>
+            <button onclick="quickFilter('yesterday')"
+                class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm
+                       py-2 px-3 rounded-lg transition">Yesterday</button>
+            <button onclick="quickFilter('7days')"
+                class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm
+                       py-2 px-3 rounded-lg transition">Last 7 Days</button>
+            <button onclick="quickFilter('all')"
+                class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-sm
+                       py-2 px-3 rounded-lg transition font-semibold">All Data</button>
+        </div>
+        <span id="filterSummary"
+              class="ml-auto text-xs font-medium text-slate-500 bg-slate-100
+                     px-3 py-1.5 rounded-full"></span>
+    </div>
+
+    <!-- ── LEGEND ──────────────────────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm
+                p-3 flex flex-wrap gap-x-5 gap-y-2 justify-center items-center text-xs font-semibold">
+        <span class="flex items-center gap-1.5"><span class="w-5 border-t-2 border-red-700"></span> USL 25.35 / LSL 24.9</span>
+        <span class="flex items-center gap-1.5">
+            <span class="w-5 inline-block" style="border-top:2px dashed #f97316"></span> UCL 25.25 / LCL 24.95
+        </span>
+        <span class="flex items-center gap-1.5"><span class="w-5 border-t-2 border-green-700"></span> CL 25.0</span>
+        <span class="w-px h-4 bg-slate-300 mx-1"></span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-green-100 border border-green-400"></span> Safe Zone</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-yellow-100 border border-yellow-400"></span> Warning Zone</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-red-100 border border-red-400"></span> Defect Zone</span>
+        <span class="w-px h-4 bg-slate-300 mx-1"></span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500"></span> Normal pt.</span>
+        <span class="flex items-center gap-1.5"><span class="w-4 h-4 rounded-full bg-red-500"></span> Defect pt.</span>
+    </div>
+
+    <!-- ── 8-CHART GRID ─────────────────────────────────────────── -->
+    <div id="chartsGrid" class="grid grid-cols-1 gap-5"></div>
+
+    <!-- ── DATA TABLE ─────────────────────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+        <div class="p-4 border-b bg-slate-50 flex flex-col sm:flex-row
+                    justify-between items-start sm:items-center gap-3">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800">Inspection Log</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Filtered view · sorted chronologically</p>
+            </div>
+            <div class="flex items-center gap-3 no-export">
+                <select id="lineTableFilter" onchange="currentPage=1;renderTable()"
+                    class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm
+                           focus:ring-2 focus:ring-indigo-400 outline-none">
+                    <option value="All">All Lines</option>
+                    <option value="Line 1">Line 1</option><option value="Line 2">Line 2</option>
+                    <option value="Line 3">Line 3</option><option value="Line 4">Line 4</option>
+                    <option value="Line 5">Line 5</option><option value="Line 6">Line 6</option>
+                    <option value="Line 7">Line 7</option><option value="Line 8">Line 8</option>
+                </select>
+                <span id="tableRecordCount"
+                      class="text-xs font-bold text-indigo-700 bg-indigo-100
+                             px-3 py-1 rounded-full whitespace-nowrap">
+                    0 Records
+                </span>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left text-slate-600">
+                <thead class="text-xs text-slate-500 uppercase bg-slate-100 tracking-wide">
+                    <tr>
+                        <th class="px-4 py-3">No.</th>
+                        <th class="px-4 py-3">Date &amp; Time</th>
+                        <th class="px-4 py-3">Line</th>
+                        <th class="px-4 py-3">Grade</th>
+                        <th class="px-4 py-3">Weight (kg)</th>
+                        <th class="px-4 py-3">Δ from CL</th>
+                        <th class="px-4 py-3 text-center">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="7" class="text-center py-10 text-slate-400">
+                            Waiting for live data…
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="p-3 border-t flex justify-between items-center bg-slate-50 no-export">
+            <span id="pageInfo" class="text-sm text-slate-500 font-medium">—</span>
+            <div class="flex gap-1.5">
+                <button onclick="changePage(-1)"
+                    class="px-3 py-1 bg-white border border-slate-300 rounded-lg
+                           hover:bg-slate-100 text-sm font-semibold transition">◀ Prev</button>
+                <button onclick="changePage(1)"
+                    class="px-3 py-1 bg-white border border-slate-300 rounded-lg
+                           hover:bg-slate-100 text-sm font-semibold transition">Next ▶</button>
+            </div>
+        </div>
+    </div>
+
+</div><!-- /#dashboardContent -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════════════════ -->
+<script>
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  CONFIGURATION — edit only this block                       ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+/**
+ * Google Apps Script Web App URL.
+ * Deploy your GAS as a Web App with "Anyone" access.
+ * Expected JSON response format (array of objects):
+ *   [
+ *     { "Line":"Line 1","Grade":"A","Date":"2024-06-10","Hour":"07","Minute":"05","Weight":"25.03" },
+ *     …
+ *   ]
+ */
+const GAS_URL =
+    "https://script.google.com/macros/s/AKfycby0AHSdlRvp-OgR4Cbr729d5q5-uOjI-al8C6XGDlJ2qrjVrvsJmI_ejHU0LkGnpIE/exec";
+
+/** Auto-refresh interval in seconds. Set to 0 to disable. */
+const REFRESH_SECONDS = 60;
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  SPC LIMITS                                                  ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+const SPC = { USL: 25.35, UCL: 25.25, CL: 25.00, LCL: 24.95, LSL: 24.90 };
+
+/** Production lines displayed */
+const LINES = ['Line 1','Line 2','Line 3','Line 4','Line 5','Line 6','Line 7','Line 8'];
+
+/** Table rows per page */
+const ROWS_PER_PAGE = 10;
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  STATE                                                       ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+let rawData        = [];   // all records from GAS
+let filteredData   = [];   // after date/line filter
+let chartInstances = {};   // Chart.js instances keyed by line name
+let currentPage    = 1;
+let _countdownTimer = null;
+let _remainingSec   = REFRESH_SECONDS;
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  BOOT                                                        ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+window.addEventListener('DOMContentLoaded', () => {
+    // Register annotation plugin
+    if (window.ChartAnnotation) Chart.register(window.ChartAnnotation);
+
+    createChartContainers();   // build 8 canvas wrappers
+
+    // If this file was produced by "Export HTML", it carries a frozen
+    // snapshot — load that instead of hitting the live GAS endpoint.
+    if (window.__EMBEDDED_SNAPSHOT__ && window.__EMBEDDED_SNAPSHOT__.length) {
+        loadSnapshot(window.__EMBEDDED_SNAPSHOT__);
+    } else {
+        fetchData();            // initial live pull
+    }
+});
+
+/**
+ * Loads a frozen snapshot embedded at export time (by exportToHTML()).
+ * No network call — this is a static, point-in-time copy of the dashboard.
+ */
+function loadSnapshot(snapshot) {
+    rawData = snapshot.map(r => {
+        const ts = new Date(r.Timestamp);
+        return { Timestamp: ts, ParsedTime: ts.getTime(), Line: r.Line, Grade: r.Grade, Weight: r.Weight };
+    }).sort((a, b) => a.ParsedTime - b.ParsedTime);
+
+    if (rawData.length) {
+        const p = n => String(n).padStart(2,'0');
+        const fmt = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+        document.getElementById('startDate').value = fmt(rawData[0].Timestamp);
+        document.getElementById('endDate').value   = fmt(rawData[rawData.length - 1].Timestamp);
+    }
+
+    applyFilters();
+    renderStatCards();
+
+    setBar('success',
+        `📦 Static snapshot · ${rawData.length} records`,
+        `Captured: ${window.__SNAPSHOT_TIME__ || ''} · This is a frozen copy, not live data`);
+
+    // No live data → refresh/auto-refresh don't apply to a snapshot.
+    document.getElementById('btnRefresh')?.classList.add('hidden');
+    document.getElementById('sbRefreshBtn')?.classList.add('hidden');
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  DATA FETCHING — Google Apps Script Web App                  ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+/**
+ * Core fetch function.
+ * GAS Web App returns JSON; we use fetch() which avoids PapaParse
+ * and handles CORS correctly for Apps Script endpoints.
+ *
+ * CORS note: Google Apps Script Web Apps deployed with
+ * "Execute as: Me" and "Who has access: Anyone" support
+ * cross-origin requests natively — no proxy needed.
+ */
+async function fetchData() {
+    stopCountdown();
+    setBar('loading', 'Fetching live data from Google Apps Script…', GAS_URL);
+    setBtnState(true);
+
+    try {
+        // Cache-bust to always get the latest data from the GAS endpoint
+        // IMPORTANT: Do NOT set Content-Type or custom headers on a GET request
+        // to GAS. Any non-simple header triggers a CORS preflight (OPTIONS) that
+        // Google Apps Script does not support → "Failed to fetch".
+        // A plain GET with no extra headers is a "simple request" → CORS-free.
+        const url      = `${GAS_URL}?_t=${Date.now()}`;
+        const response = await fetch(url);   // simple GET — no custom headers
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const json = await response.json();
+
+        // GAS may return the array directly, or wrapped in a key
+        const records = Array.isArray(json) ? json
+                      : (json.data || json.records || json.rows || []);
+
+        if (!records.length) {
+            throw new Error('Server returned 0 records. Check the GAS script output.');
+        }
+
+        processData(records);
+        onFetchSuccess();
+
+    } catch (err) {
+        console.error('[fetchData] Error:', err);
+        setBar('error',
+            `❌ Connection failed: ${err.message}`,
+            'Check: GAS deployed as "Anyone" · Network available · URL correct');
+        setBtnState(false);
+        document.getElementById('sbRetryBtn').classList.remove('hidden');
+    }
+}
+
+function manualRefresh() {
+    stopCountdown();
+    fetchData();
+}
+
+function onFetchSuccess() {
+    const ts = new Date().toLocaleString('en-US', { hour12: false });
+    setBar('success',
+        `✅ Live · ${rawData.length} records loaded`,
+        `Last sync: ${ts}${REFRESH_SECONDS ? ` · Auto-refresh every ${REFRESH_SECONDS}s` : ''}`);
+    setBtnState(false);
+    document.getElementById('sbRefreshBtn').classList.remove('hidden');
+    if (REFRESH_SECONDS > 0) startCountdown();
+    // Báo hiệu cho apiflash biết dashboard đã render xong, sẵn sàng chụp ảnh
+    setTimeout(() => { window.__DASHBOARD_READY__ = true; }, 1500);
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  DATA PROCESSING                                             ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+/**
+ * Converts raw JSON array from GAS into normalised records.
+ *
+ * Expected fields (case-insensitive match):
+ *   Line, Grade, Date, Hour, Minute, Weight
+ *
+ * Timestamp is assembled as: new Date(`${Date}T${Hour}:${Minute}:00`)
+ */
+function processData(records) {
+    if (!records || !records.length) return;
+
+    // ── Detect raw shape coming back from doGet() ──────────────
+    // (a) array-of-arrays  → e.g. sheet.getDataRange().getValues()  → row[7]
+    // (b) array-of-objects → e.g. JSON built with header-name keys → row["Giá trị cân (kg)"]
+    const isArrayFormat = Array.isArray(records[0]);
+    console.log(`[processData] doGet() format detected: ${
+        isArrayFormat ? 'ARRAY-OF-ARRAYS (raw getValues())' : 'ARRAY-OF-OBJECTS (keyed JSON)'}`);
+
+    // ── Fixed column INDEX map — matches Sheet columns A→I ─────
+    // A=0 Timestamp | B=1 Ngày sản xuất | C=2 Giờ cân(Giờ) | D=3 Giờ cân(Phút)
+    // E=4 Ca sản xuất | F=5 Line | G=6 Grade sản phẩm | H=7 Giá trị cân(kg) | I=8 Số thứ tự bao
+    const COL = { DATE: 1, HOUR: 2, MINUTE: 3, LINE: 5, GRADE: 6, WEIGHT: 7 };
+
+    // ── Array-of-arrays: row[0] is the header row — skip it ────
+    const dataRows = isArrayFormat ? records.slice(1) : records;
+
+    // For object format, keep header-name matching as a fallback path
+    let colDate, colHour, colMinute, colLine, colGrade, colWeight;
+    if (!isArrayFormat) {
+        const keys = Object.keys(records[0]);
+        const find = (...kw) => keys.find(k =>
+            kw.some(w => k.toLowerCase().includes(w.toLowerCase()))) || '';
+        colDate   = find('date', 'ngày');
+        colHour   = find('hour', 'giờ', 'hh', 'h');
+        colMinute = find('minute', 'phút', 'mm', 'min');
+        colLine   = find('line');
+        colGrade  = find('grade', 'sản phẩm', 'product', 'loại');
+        colWeight = find('giá trị cân', 'cân nặng', 'weight', 'trọng lượng', 'kg') || keys[COL.WEIGHT] || '';
+    }
+
+    rawData = dataRows.map(row => {
+        // DEBUG: see exactly what doGet() sent for this row, every time
+        console.log(row);
+
+        const dateStr  = ((isArrayFormat ? row[COL.DATE]   : row[colDate])   ?? '').toString().trim();
+        const hStr     = ((isArrayFormat ? row[COL.HOUR]   : row[colHour])   ?? '0').toString().trim().padStart(2, '0');
+        const mStr     = ((isArrayFormat ? row[COL.MINUTE] : row[colMinute]) ?? '0').toString().trim().padStart(2, '0');
+        const lineVal  = ((isArrayFormat ? row[COL.LINE]   : row[colLine])   ?? '').toString().trim();
+        const gradeVal = ((isArrayFormat ? row[COL.GRADE]  : row[colGrade])  ?? '').toString().trim() || 'N/A';
+
+        // Support both "YYYY-MM-DD" and "DD/MM/YYYY" date formats
+        const normalDate = dateStr.includes('/')
+            ? dateStr.split('/').reverse().join('-')   // DD/MM/YYYY → YYYY-MM-DD
+            : dateStr;
+
+        const ts = new Date(`${normalDate}T${hStr}:${mStr}:00`);
+
+        // ── VALIDATION & CLEANING — Weight is explicitly Column H (index 7) ──
+        const rawWeight   = isArrayFormat ? row[COL.WEIGHT] : row[colWeight];
+        const cleanedStr  = (rawWeight ?? '').toString().trim().replace(',', '.').replace(/[^\d.-]/g, '');
+        const weightVal   = parseFloat(cleanedStr);
+
+        return {
+            Timestamp : ts,
+            ParsedTime: ts.getTime(),
+            Line      : lineVal,
+            Grade     : gradeVal,
+            Weight    : weightVal
+        };
+    })
+    // Skip rows if Line is missing, Time is invalid, or Weight is NaN (empty/text)
+    .filter(r => r.Line && !isNaN(r.Weight) && !isNaN(r.ParsedTime))
+    .sort((a, b) => a.ParsedTime - b.ParsedTime);
+
+    console.log(`[processData] Valid records: ${rawData.length}`);
+
+    // Initialise filters — URL params take priority over full-range default
+    // Khi apiflash chụp ảnh, Apps Script truyền ?start=...&end=... vào URL
+    // để dashboard tự áp đúng khung thời gian trước khi chụp.
+    if (rawData.length) {
+        const p   = n => String(n).padStart(2,'0');
+        const fmt = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+        const params   = new URLSearchParams(window.location.search);
+        const urlStart = params.get('start');
+        const urlEnd   = params.get('end');
+        document.getElementById('startDate').value = urlStart || fmt(rawData[0].Timestamp);
+        document.getElementById('endDate').value   = urlEnd   || fmt(rawData[rawData.length - 1].Timestamp);
+    }
+
+    applyFilters();
+    renderStatCards();
+}
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  SPC EVALUATOR                                               ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function evaluate(weight) {
+    if (weight > SPC.USL || weight < SPC.LSL)
+        return { label:'Defect',  badgeClass:'badge-defect',  ptColor:'#ef4444', ptRadius:7  };
+    if (weight > SPC.UCL || weight < SPC.LCL)
+        return { label:'Warning', badgeClass:'badge-warning', ptColor:'#eab308', ptRadius:5  };
+    return   { label:'Normal',  badgeClass:'badge-normal',  ptColor:'#3b82f6', ptRadius:3  };
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  STAT SUMMARY CARDS                                          ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function renderStatCards() {
+    const total    = filteredData.length;
+    const weights  = filteredData.map(r => r.Weight);
+    const avg      = total ? (weights.reduce((a,b)=>a+b,0)/total) : 0;
+    const defects  = filteredData.filter(r => evaluate(r.Weight).label === 'Defect').length;
+    const warnings = filteredData.filter(r => evaluate(r.Weight).label === 'Warning').length;
+
+    // Standard deviation (sample, n-1)
+    const variance = total > 1
+        ? weights.reduce((s, w) => s + Math.pow(w - avg, 2), 0) / (total - 1) : 0;
+    const stdDev = Math.sqrt(variance);
+
+    // Cp = (USL-LSL)/(6*sigma), Cpk = min((USL-mean),(mean-LSL)) / (3*sigma)
+    let cp = NaN, cpk = NaN;
+    if (total > 1 && stdDev > 0) {
+        cp  = (SPC.USL - SPC.LSL) / (6 * stdDev);
+        cpk = Math.min((SPC.USL - avg) / (3 * stdDev), (avg - SPC.LSL) / (3 * stdDev));
+    }
+    const cpStr  = isFinite(cp)  ? cp.toFixed(2)  : '—';
+    const cpkStr = isFinite(cpk) ? cpk.toFixed(2) : '—';
+
+    // Alarm status
+    let alarmLabel, alarmClass;
+    if (defects > 0 || (isFinite(cpk) && cpk < 1.0)) {
+        alarmLabel = 'ALARM';   alarmClass = 'text-red-700 bg-red-50 border-red-200';
+    } else if (warnings > 0 || (isFinite(cpk) && cpk < 1.33) || (isFinite(cp) && cp < 1.33)) {
+        alarmLabel = 'WARNING'; alarmClass = 'text-amber-700 bg-amber-50 border-amber-200';
+    } else {
+        alarmLabel = 'NORMAL';  alarmClass = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    }
+
+    const cards = [
+        { label:'Total Records', value: total.toLocaleString(),
+          sub:`Filtered · ${LINES.length} lines`, color:'text-indigo-700', bg:'bg-indigo-50', border:'border-indigo-200' },
+        { label:'Avg Weight', value: total ? avg.toFixed(4)+' kg' : '—',
+          sub:`Target: ${SPC.CL} kg`, color:'text-emerald-700', bg:'bg-emerald-50', border:'border-emerald-200' },
+        { label:'Std Dev', value: total > 1 ? stdDev.toFixed(4)+' kg' : '—',
+          sub:'Sample (n-1)', color:'text-sky-700', bg:'bg-sky-50', border:'border-sky-200' },
+        { label:'Cp',  value: cpStr,  sub:'Target ≥ 1.33', color:'text-violet-700', bg:'bg-violet-50', border:'border-violet-200' },
+        { label:'Cpk', value: cpkStr, sub:'Target ≥ 1.33', color:'text-violet-700', bg:'bg-violet-50', border:'border-violet-200' },
+        { label:'Warnings', value: warnings,
+          sub:'Outside UCL/LCL', color:'text-amber-700', bg:'bg-amber-50', border:'border-amber-200' },
+        { label:'Defects', value: defects,
+          sub:'Outside USL/LSL', color:'text-red-700', bg:'bg-red-50', border:'border-red-200' },
+        { label:'Alarm Status', value: alarmLabel, sub:'Auto-evaluated',
+          color:alarmClass.split(' ')[0], bg:alarmClass.split(' ')[1], border:alarmClass.split(' ')[2] },
+    ];
+
+    document.getElementById('statCards').innerHTML = cards.map(c => `
+        <div class="stat-card ${c.bg} border ${c.border}">
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">${c.label}</p>
+            <p class="text-2xl font-extrabold ${c.color}">${c.value}</p>
+            <p class="text-xs text-slate-500 mt-1">${c.sub}</p>
+        </div>`).join('');
+
+    document.getElementById('filterSummary').textContent =
+        total ? `${total} records · ${defects} defects · ${warnings} warnings` : 'No data';
+
+    // Expose KPI snapshot cho apiflash đọc sau khi chụp ảnh
+    window.__SPC_KPIS__ = {
+        total, avg, stdDev,
+        cp: isFinite(cp) ? cp : null, cpk: isFinite(cpk) ? cpk : null,
+        warnings, defects, alarmLabel
+    };
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  CHART GRID                                                  ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function createChartContainers() {
+    document.getElementById('chartsGrid').innerHTML = LINES.map(line => {
+        const id = line.replace(/\s+/g, '');
+        return `
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+            <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-100">
+                <h3 class="font-bold text-slate-700">${line}</h3>
+                <div class="flex items-center gap-2 text-xs">
+                    <span id="cDefect_${id}"
+                          class="hidden font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded-full"></span>
+                    <span id="cWarn_${id}"
+                          class="hidden font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full"></span>
+                    <span id="cCount_${id}"
+                          class="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">0 pts</span>
+                </div>
+            </div>
+            <div class="chart-wrapper"><canvas id="chart_${id}"></canvas></div>
+        </div>`;
+    }).join('');
+}
+
+/**
+ * Annotation config for SPC lines + background zones.
+ * Re-used for every chart instance.
+ */
+function buildAnnotations() {
+    return {
+        // ── Background zones ──────────────────────────────────
+        zDH: { type:'box', yMin:SPC.USL, yMax:25.60,
+               backgroundColor:'rgba(239,68,68,.09)',   borderWidth:0 },
+        zWH: { type:'box', yMin:SPC.UCL, yMax:SPC.USL,
+               backgroundColor:'rgba(234,179,8,.1)',    borderWidth:0 },
+        zS:  { type:'box', yMin:SPC.LCL, yMax:SPC.UCL,
+               backgroundColor:'rgba(34,197,94,.09)',   borderWidth:0 },
+        zWL: { type:'box', yMin:SPC.LSL, yMax:SPC.LCL,
+               backgroundColor:'rgba(234,179,8,.1)',    borderWidth:0 },
+        zDL: { type:'box', yMin:24.80,   yMax:SPC.LSL,
+               backgroundColor:'rgba(239,68,68,.09)',   borderWidth:0 },
+
+        // ── SPC reference lines ───────────────────────────────
+        lUSL: { type:'line', yMin:SPC.USL, yMax:SPC.USL,
+                borderColor:'#991b1b', borderWidth:2 },
+        lUCL: { type:'line', yMin:SPC.UCL, yMax:SPC.UCL,
+                borderColor:'#f97316', borderWidth:1.5, borderDash:[6,4] },
+        lCL:  { type:'line', yMin:SPC.CL,  yMax:SPC.CL,
+                borderColor:'#15803d', borderWidth:2 },
+        lLCL: { type:'line', yMin:SPC.LCL, yMax:SPC.LCL,
+                borderColor:'#f97316', borderWidth:1.5, borderDash:[6,4] },
+        lLSL: { type:'line', yMin:SPC.LSL, yMax:SPC.LSL,
+                borderColor:'#991b1b', borderWidth:2 },
+    };
+}
+
+function renderAllCharts() {
+    LINES.forEach(line => {
+        const id       = line.replace(/\s+/g, '');
+        const lineData = filteredData.filter(d => d.Line === line);
+
+        // Update mini badges
+        const defects  = lineData.filter(d => evaluate(d.Weight).label==='Defect').length;
+        const warnings = lineData.filter(d => evaluate(d.Weight).label==='Warning').length;
+        const defEl    = document.getElementById(`cDefect_${id}`);
+        const warnEl   = document.getElementById(`cWarn_${id}`);
+
+        document.getElementById(`cCount_${id}`).textContent = `${lineData.length} pts`;
+        defEl.textContent  = `${defects} Defect`;
+        warnEl.textContent = `${warnings} Warn`;
+        defEl.classList.toggle('hidden',  defects  === 0);
+        warnEl.classList.toggle('hidden', warnings === 0);
+
+        // Chart data
+        const labels   = lineData.map(d => {
+            const dt = d.Timestamp;
+            return `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+        });
+        const weights  = lineData.map(d => d.Weight);
+        const ptColors = weights.map(w => evaluate(w).ptColor);
+        const ptRadii  = weights.map(w => evaluate(w).ptRadius);
+
+        // Destroy old instance
+        if (chartInstances[line]) { chartInstances[line].destroy(); }
+
+        chartInstances[line] = new Chart(
+            document.getElementById(`chart_${id}`).getContext('2d'),
+            {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label           : `${line} Weight`,
+                        data            : weights,
+                        borderColor     : '#94a3b8',
+                        borderWidth     : 1.5,
+                        pointBackgroundColor : ptColors,
+                        pointBorderColor     : ptColors,
+                        pointRadius          : ptRadii,
+                        pointHoverRadius     : ptRadii.map(r => r + 3),
+                        fill    : false,
+                        tension : 0,
+                    }]
+                },
+                options: {
+                    responsive          : true,
+                    maintainAspectRatio : false,
+                    scales: {
+                        y: {
+                            min  : 24.80, suggestedMax: 25.50,
+                            ticks: { callback: v => v.toFixed(2), font: { size: 10 } },
+                            grid : { color: '#e2e8f0' }
+                        },
+                        x: {
+                            ticks: { maxTicksLimit: 8, maxRotation: 40, font: { size: 9 } },
+                            grid : { color: '#e2e8f0' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        annotation: { annotations: buildAnnotations() },
+                        tooltip: {
+                            backgroundColor : '#1e293b',
+                            titleColor      : '#94a3b8',
+                            bodyColor       : '#f1f5f9',
+                            padding         : 10,
+                            callbacks: {
+                                title : items => {
+                                    const d = lineData[items[0].dataIndex];
+                                    return d ? d.Timestamp.toLocaleString() : '';
+                                },
+                                label : ctx => {
+                                    const w = ctx.raw;
+                                    const g = lineData[ctx.dataIndex]?.Grade || '';
+                                    return [
+                                        ` Weight : ${w.toFixed(3)} kg`,
+                                        ` Grade  : ${g}`,
+                                        ` Status : ${evaluate(w).label}`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        );
+    });
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  DATA TABLE                                                  ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function renderTable() {
+    const lineFilter = document.getElementById('lineTableFilter').value;
+    const tableData  = lineFilter === 'All'
+        ? filteredData
+        : filteredData.filter(d => d.Line === lineFilter);
+
+    const total    = tableData.length;
+    const maxPages = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
+    const start    = (currentPage - 1) * ROWS_PER_PAGE;
+    const pageData = tableData.slice(start, start + ROWS_PER_PAGE);
+
+    document.getElementById('tableRecordCount').textContent = `${total} Records`;
+    document.getElementById('pageInfo').textContent =
+        total ? `Page ${currentPage} of ${maxPages} · showing ${start+1}–${Math.min(start+ROWS_PER_PAGE,total)}` : 'No records';
+
+    const tbody = document.getElementById('tableBody');
+    if (!total) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-slate-400">
+            No data available for the selected filters.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = pageData.map((row, i) => {
+        const s   = evaluate(row.Weight);
+        const dev = (row.Weight - SPC.CL).toFixed(3);
+        const devColor = parseFloat(dev) > 0
+            ? 'text-blue-600 font-semibold'
+            : parseFloat(dev) < 0
+                ? 'text-orange-600 font-semibold'
+                : 'text-slate-500';
+
+        const dt     = row.Timestamp;
+        const dateStr = dt.toLocaleDateString('en-CA');   // YYYY-MM-DD
+        const timeStr = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+
+        return `
+        <tr class="border-b border-slate-100 transition">
+            <td class="px-4 py-3 text-slate-400 text-xs">${start + i + 1}</td>
+            <td class="px-4 py-3 text-slate-600 text-xs">
+                <span class="font-medium text-slate-700">${dateStr}</span>
+                <span class="ml-1 text-slate-400">${timeStr}</span>
+            </td>
+            <td class="px-4 py-3 font-bold text-slate-800">${row.Line}</td>
+            <td class="px-4 py-3 font-semibold text-indigo-700">${row.Grade}</td>
+            <td class="px-4 py-3 font-bold text-slate-800 text-base">${row.Weight.toFixed(3)}</td>
+            <td class="px-4 py-3 text-sm ${devColor}">${parseFloat(dev)>0?'+':''}${dev}</td>
+            <td class="px-4 py-3 text-center">
+                <span class="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide rounded-full ${s.badgeClass}">
+                    ${s.label}
+                </span>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function changePage(dir) {
+    const lf       = document.getElementById('lineTableFilter').value;
+    const data     = lf === 'All' ? filteredData : filteredData.filter(d => d.Line === lf);
+    const maxPages = Math.max(1, Math.ceil(data.length / ROWS_PER_PAGE));
+    currentPage    = Math.max(1, Math.min(currentPage + dir, maxPages));
+    renderTable();
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  FILTERING                                                   ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function applyFilters() {
+    if (!rawData.length) return;
+
+    const s = document.getElementById('startDate').value;
+    const e = document.getElementById('endDate').value;
+    const sT = s ? new Date(s).getTime() : 0;
+    const eT = e ? new Date(e).getTime() : Infinity;
+
+    filteredData = rawData.filter(r => r.ParsedTime >= sT && r.ParsedTime <= eT);
+    currentPage  = 1;
+
+    renderStatCards();
+    renderAllCharts();
+    renderTable();
+}
+
+function quickFilter(type) {
+    if (!rawData.length) return;
+    const now  = new Date();
+    const p    = n => String(n).padStart(2,'0');
+    const fmt  = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+
+    let s = new Date(now), e = new Date(now);
+
+    if (type === 'today') {
+        s.setHours(0,0,0,0);
+    } else if (type === 'yesterday') {
+        s.setDate(s.getDate()-1); s.setHours(0,0,0,0);
+        e.setDate(e.getDate()-1); e.setHours(23,59,0,0);
+    } else if (type === '7days') {
+        s.setDate(s.getDate()-7); s.setHours(0,0,0,0);
+    } else { // all
+        s = rawData[0].Timestamp;
+    }
+
+    document.getElementById('startDate').value = fmt(s);
+    document.getElementById('endDate').value   = fmt(e);
+    applyFilters();
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  STATUS BAR                                                  ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+const STATUS_THEMES = {
+    loading: { bar:'bg-indigo-50 border-indigo-200', title:'text-indigo-800', sub:'text-indigo-600' },
+    success: { bar:'bg-emerald-50 border-emerald-200', title:'text-emerald-800', sub:'text-emerald-600' },
+    error  : { bar:'bg-red-50 border-red-200',         title:'text-red-800',    sub:'text-red-600'   },
+};
+
+function setBar(state, title, sub = '') {
+    const bar      = document.getElementById('statusBar');
+    const iconEl   = document.getElementById('sbIcon');
+    const titleEl  = document.getElementById('sbTitle');
+    const subEl    = document.getElementById('sbSub');
+    const retryBtn = document.getElementById('sbRetryBtn');
+    const refreshBtn=document.getElementById('sbRefreshBtn');
+    const t        = STATUS_THEMES[state];
+
+    // Apply theme
+    bar.className = `no-export flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-300 ${t.bar}`;
+    titleEl.className = `text-sm font-semibold ${t.title}`;
+    subEl.className   = `text-xs truncate mt-0.5 ${t.sub}`;
+
+    titleEl.textContent = title;
+    subEl.textContent   = sub.length > 130 ? sub.slice(0,127)+'…' : sub;
+
+    // Icon
+    if (state === 'loading') {
+        iconEl.innerHTML = '<span class="spinner"></span>';
+        retryBtn.classList.add('hidden');
+    } else if (state === 'success') {
+        iconEl.innerHTML = '<span class="pulse-dot"></span>';
+        retryBtn.classList.add('hidden');
+    } else {
+        iconEl.innerHTML = '<span style="font-size:20px;line-height:1">⚠️</span>';
+        retryBtn.classList.remove('hidden');
+        refreshBtn.classList.add('hidden');
+    }
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  COUNTDOWN RING                                              ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function startCountdown() {
+    _remainingSec = REFRESH_SECONDS;
+    document.getElementById('ringWrap').classList.remove('hidden');
+    document.getElementById('ringWrap').classList.add('flex');
+    updateRing();
+    clearInterval(_countdownTimer);
+    _countdownTimer = setInterval(() => {
+        _remainingSec--;
+        updateRing();
+        if (_remainingSec <= 0) fetchData();
+    }, 1000);
+}
+
+function stopCountdown() {
+    clearInterval(_countdownTimer);
+    _countdownTimer = null;
+    document.getElementById('ringWrap').classList.add('hidden');
+    document.getElementById('ringWrap').classList.remove('flex');
+}
+
+function updateRing() {
+    const pct    = _remainingSec / REFRESH_SECONDS;
+    const circ   = 2 * Math.PI * 15.9;
+    const offset = circ * (1 - pct);
+    const ring   = document.getElementById('ringPath');
+    ring.style.strokeDasharray  = `${circ} ${circ}`;
+    ring.style.strokeDashoffset = offset;
+    ring.style.stroke = _remainingSec <= 10 ? '#f97316' : '#6366f1';
+    document.getElementById('ringLabel').textContent = _remainingSec;
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  BUTTON STATE                                                ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function setBtnState(loading) {
+    const btn = document.getElementById('btnRefresh');
+    btn.disabled = loading;
+    btn.textContent = loading ? 'Syncing…' : '🔄 Refresh Now';
+    btn.classList.toggle('opacity-50', loading);
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  PDF EXPORT  —  scaled to fit on ONE A4 landscape page        ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+async function exportToPDF() {
+    const el  = document.getElementById('dashboardContent');
+    const btn = document.getElementById('btnExportPdf');
+    el.classList.add('pdf-exporting');
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Đang xuất PDF…'; }
+
+    try {
+        // 1) Render the dashboard to a canvas (white bg, regardless of the
+        //    page's gray background, so the PDF page stays clean).
+        const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/jpeg', 0.97);
+
+        // 2) Create a single A4 landscape page.
+        const jsPDFCtor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+        const pdf = new jsPDFCtor({ unit: 'in', format: 'a4', orientation: 'landscape' });
+
+        const margin     = 0.3; // inches
+        const pageWidth  = pdf.internal.pageSize.getWidth()  - margin * 2;
+        const pageHeight = pdf.internal.pageSize.getHeight() - margin * 2;
+
+        // 3) Scale the captured image down to fit ENTIRELY within that one
+        //    page (whichever dimension — width or height — is the limiting
+        //    factor), preserving aspect ratio. This is what guarantees a
+        //    single page no matter how tall the dashboard content is.
+        const imgRatio  = canvas.width / canvas.height;
+        const pageRatio = pageWidth / pageHeight;
+
+        let renderWidth, renderHeight;
+        if (imgRatio > pageRatio) {
+            renderWidth  = pageWidth;
+            renderHeight = pageWidth / imgRatio;
+        } else {
+            renderHeight = pageHeight;
+            renderWidth  = pageHeight * imgRatio;
+        }
+
+        // 4) Center it on the page.
+        const x = margin + (pageWidth  - renderWidth)  / 2;
+        const y = margin + (pageHeight - renderHeight) / 2;
+
+        pdf.addImage(imgData, 'JPEG', x, y, renderWidth, renderHeight);
+        pdf.save(`SPC_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+
+    } catch (err) {
+        console.error('[exportToPDF] Error:', err);
+        alert('Xuất PDF thất bại: ' + err.message);
+    } finally {
+        el.classList.remove('pdf-exporting');
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || 'Export PDF'; }
+    }
+}
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  HTML EXPORT  —  standalone static snapshot, no live fetch    ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+function exportToHTML() {
+    const btn = document.getElementById('btnExportHtml');
+    try {
+        if (!rawData.length) {
+            alert('Chưa có dữ liệu để xuất. Vui lòng đợi dashboard tải xong dữ liệu.');
+            return;
+        }
+        if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Đang xuất HTML…'; }
+
+        // Freeze the currently loaded & processed records into plain JSON
+        // (Date objects → ISO strings) so the exported file can rebuild
+        // everything offline, with no GAS_URL fetch required.
+        const snapshot = rawData.map(r => ({
+            Line: r.Line, Grade: r.Grade, Weight: r.Weight, Timestamp: r.Timestamp.toISOString()
+        }));
+        const snapshotTime = new Date().toLocaleString('en-US', { hour12: false });
+
+        const snapshotScript =
+            `<script>window.__EMBEDDED_SNAPSHOT__ = ${JSON.stringify(snapshot)};` +
+            `window.__SNAPSHOT_TIME__ = ${JSON.stringify(snapshotTime)};<\/script>`;
+
+        // Clone the full live page and inject the snapshot right before </head>.
+        let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        html = html.replace('</head>', `${snapshotScript}\n</head>`);
+
+        const blob = new Blob([html], { type: 'text/html' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `SPC_Snapshot_${new Date().toISOString().slice(0,10)}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+    } catch (err) {
+        console.error('[exportToHTML] Error:', err);
+        alert('Xuất HTML thất bại: ' + err.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || 'Export HTML'; }
+    }
+}
+</script>
+</body>
+</html>
