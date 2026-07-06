@@ -550,12 +550,19 @@ function processData(records) {
 
     console.log(`[processData] Valid records: ${rawData.length}`);
 
-    // Initialise filters to full range on first load
+     // Initialise filters — URL params take priority over full-range default
     if (rawData.length) {
-        const p = n => String(n).padStart(2,'0');
+        const p   = n => String(n).padStart(2,'0');
         const fmt = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-        document.getElementById('startDate').value = fmt(rawData[0].Timestamp);
-        document.getElementById('endDate').value   = fmt(rawData[rawData.length - 1].Timestamp);
+        const params = new URLSearchParams(window.location.search);
+
+        // If ?start= and ?end= are present in the URL, use them (screenshot mode)
+        // Otherwise fall back to full data range (normal browser view)
+        const urlStart = params.get('start');
+        const urlEnd   = params.get('end');
+
+        document.getElementById('startDate').value = urlStart || fmt(rawData[0].Timestamp);
+        document.getElementById('endDate').value   = urlEnd   || fmt(rawData[rawData.length - 1].Timestamp);
     }
 
     applyFilters();
